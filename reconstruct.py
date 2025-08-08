@@ -20,6 +20,7 @@ def parse():
     parser.add_argument('--chans', type=int, default=9, help='Number of channels for cascade U-Net')
     parser.add_argument('--sens_chans', type=int, default=4, help='Number of channels for sensitivity map U-Net')
     parser.add_argument("--input_key", type=str, default='kspace', help='Name of input key')
+    # Note: Architecture (UNet vs SwinUNet) is auto-detected from saved model
 
     args = parser.parse_args()
     return args

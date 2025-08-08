@@ -16,6 +16,45 @@ from fastmri.data import transforms
 
 from unet import Unet
 from utils.common.utils import center_crop
+from .vision_transformer import SwinUnet
+
+
+class SwinConfig:
+    """Configuration class for SwinUnet to bridge Unet parameter interface."""
+    def __init__(self, in_chans=2, out_chans=2, chans=32, num_pools=4, drop_prob=0.0, img_size=None):
+        # DATA config - Use None for dynamic sizing
+        class DataConfig:
+            IMG_SIZE = img_size if img_size is not None else 224  # Default fallback
+        
+        # MODEL config
+        class ModelConfig:
+            DROP_RATE = drop_prob
+            DROP_PATH_RATE = max(0.1, drop_prob * 2)
+            
+            class SwinConfig:
+                PATCH_SIZE = 4
+                IN_CHANS = in_chans  # Use actual input channels (2 for MRI)
+                EMBED_DIM = max(48, chans)     # Further reduced: chans instead of chans*2
+                DEPTHS = [2, 2, 2]           # Single layer per stage for RTX 2080
+                NUM_HEADS = [2, 3, 4]       # Reduced head count
+                WINDOW_SIZE = 6  # Window size 6 for 3-stage compatibility
+                MLP_RATIO = 2.0              # Reduced MLP ratio
+                QKV_BIAS = True
+                QK_SCALE = None
+                APE = False
+                PATCH_NORM = True
+            
+            SWIN = SwinConfig()
+            PRETRAIN_CKPT = None
+        
+        # TRAIN config
+        class TrainConfig:
+            USE_CHECKPOINT = True  # Enable gradient checkpointing to save memory
+        
+        self.DATA = DataConfig()
+        self.MODEL = ModelConfig()
+        self.TRAIN = TrainConfig()
+        self.out_chans = out_chans
 
 
 class NormUnet(nn.Module):
@@ -34,6 +73,7 @@ class NormUnet(nn.Module):
         in_chans: int = 2,
         out_chans: int = 2,
         drop_prob: float = 0.0,
+        use_transformer: bool = True,
     ):
         """
         Args:
@@ -42,16 +82,33 @@ class NormUnet(nn.Module):
             in_chans: Number of channels in the input to the U-Net model.
             out_chans: Number of channels in the output to the U-Net model.
             drop_prob: Dropout probability.
+            use_transformer: If True, use SwinUnet instead of regular Unet.
         """
         super().__init__()
 
-        self.unet = Unet(
-            in_chans=in_chans,
-            out_chans=out_chans,
-            chans=chans,
-            num_pool_layers=num_pools,
-            drop_prob=drop_prob,
-        )
+        self.is_transformer = use_transformer
+        self.in_chans = in_chans
+        self.out_chans = out_chans
+        
+        if use_transformer:
+            # Create enhanced config for SwinUnet with proper parameter mapping
+            config = SwinConfig(
+                in_chans=in_chans,  # Direct 2-channel support
+                out_chans=out_chans,
+                chans=chans,
+                num_pools=num_pools,
+                drop_prob=drop_prob
+            )
+            
+            self.unet = SwinUnet(config, img_size=None, num_classes=out_chans)
+        else:
+            self.unet = Unet(
+                in_chans=in_chans,
+                out_chans=out_chans,
+                chans=chans,
+                num_pool_layers=num_pools,
+                drop_prob=drop_prob,
+            )
 
     def complex_to_chan_dim(self, x: torch.Tensor) -> torch.Tensor:
         b, c, h, w, two = x.shape
@@ -85,14 +142,20 @@ class NormUnet(nn.Module):
         self, x: torch.Tensor
     ) -> Tuple[torch.Tensor, Tuple[List[int], List[int], int, int]]:
         _, _, h, w = x.shape
-        w_mult = ((w - 1) | 15) + 1
-        h_mult = ((h - 1) | 15) + 1
+        
+        if self.is_transformer:
+            # For SwinUNet with window_size=6 and 3 stages: perfect divisibility
+            # FastMRI 768×400 → 768×480 → 192×120 → 96×60 → 48×30 (all ÷6 ✅)
+            h_mult = 768  # 768÷6=128, stages: 192→96→48 (all ÷6)
+            w_mult = 480  # 480÷6=80, stages: 120→60→30 (all ÷6)
+        else:
+            # Original UNet padding (multiple of 16)
+            w_mult = ((w - 1) | 15) + 1
+            h_mult = ((h - 1) | 15) + 1
+            
         w_pad = [math.floor((w_mult - w) / 2), math.ceil((w_mult - w) / 2)]
         h_pad = [math.floor((h_mult - h) / 2), math.ceil((h_mult - h) / 2)]
-        # TODO: fix this type when PyTorch fixes theirs
-        # the documentation lies - this actually takes a list
-        # https://github.com/pytorch/pytorch/blob/master/torch/nn/functional.py#L3457
-        # https://github.com/pytorch/pytorch/pull/16949
+        
         x = F.pad(x, w_pad + h_pad)
 
         return x, (h_pad, w_pad, h_mult, w_mult)
@@ -116,6 +179,7 @@ class NormUnet(nn.Module):
         x, mean, std = self.norm(x)
         x, pad_sizes = self.pad(x)
 
+        # Forward through the network (UNet or SwinUNet)
         x = self.unet(x)
 
         # get shapes back and unnormalize
@@ -142,6 +206,7 @@ class SensitivityModel(nn.Module):
         in_chans: int = 2,
         out_chans: int = 2,
         drop_prob: float = 0.0,
+        use_transformer: bool = False,
     ):
         """
         Args:
@@ -159,6 +224,7 @@ class SensitivityModel(nn.Module):
             in_chans=in_chans,
             out_chans=out_chans,
             drop_prob=drop_prob,
+            use_transformer=use_transformer,
         )
 
     def chans_to_batch_dim(self, x: torch.Tensor) -> Tuple[torch.Tensor, int]:
@@ -216,6 +282,7 @@ class VarNet(nn.Module):
         sens_pools: int = 4,
         chans: int = 18,
         pools: int = 4,
+        use_transformer: bool = False,
     ):
         """
         Args:
@@ -227,12 +294,13 @@ class VarNet(nn.Module):
             chans: Number of channels for cascade U-Net.
             pools: Number of downsampling and upsampling layers for cascade
                 U-Net.
+            use_transformer: If True, use SwinUNet in cascades instead of regular UNet.
         """
         super().__init__()
 
-        self.sens_net = SensitivityModel(sens_chans, sens_pools)
+        self.sens_net = SensitivityModel(sens_chans, sens_pools, use_transformer=use_transformer)
         self.cascades = nn.ModuleList(
-            [VarNetBlock(NormUnet(chans, pools)) for _ in range(num_cascades)]
+            [VarNetBlock(NormUnet(chans, pools, use_transformer=use_transformer)) for _ in range(num_cascades)]
         )
 
     def forward(self, masked_kspace: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:

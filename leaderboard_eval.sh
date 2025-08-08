@@ -1,3 +1,3 @@
 python leaderboard_eval.py \
-  -lp '/root/Data/leaderboard' \
+  -lp '/storage/junsoo/leaderboard' \
   -yp '../result/test_Varnet/reconstructions_leaderboard'

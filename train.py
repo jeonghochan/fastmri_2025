@@ -34,6 +34,10 @@ def parse():
     parser.add_argument('--seed', type=int, default=430, help='Fix random seed')
     parser.add_argument('--use-transformer', action='store_true', help='Use SwinUNet instead of regular UNet')
 
+    # K-space augmentation arguments
+    parser.add_argument('--kspace-augment-config', type=str, default=None, 
+                       help='Path to k-space augmentation configuration YAML file')
+
     args = parser.parse_args()
     return args
 
@@ -44,6 +48,13 @@ if __name__ == '__main__':
     if args.seed is not None:
         seed_fix(args.seed)
 
+    # Setup k-space augmentation configuration
+    kspace_augment_config_path = args.kspace_augment_config
+    if kspace_augment_config_path:
+        print(f"K-space augmentation enabled: {kspace_augment_config_path}")
+    else:
+        print("K-space augmentation disabled")
+
     args.exp_dir = '../result' / args.net_name / 'checkpoints'
     args.val_dir = '../result' / args.net_name / 'reconstructions_val'
     args.main_dir = '../result' / args.net_name / __file__
@@ -52,4 +63,4 @@ if __name__ == '__main__':
     args.exp_dir.mkdir(parents=True, exist_ok=True)
     args.val_dir.mkdir(parents=True, exist_ok=True)
 
-    train(args)
+    train(args, kspace_augment_config_path)

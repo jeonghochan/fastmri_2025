@@ -1,9 +1,10 @@
 python train.py \
   -b 1 \
-  -e 100 \
+  -e 80 \
   -l 0.001 \
   -r 10 \
   -n 'test_Varnet/swinunet' \
   -t '/storage/junsoo/train/' \
   -v '/storage/junsoo/val/' \
-  --use-transformer
+  --use-transformer \
+  --kspace-augment-config configs/kspace_augment.yaml

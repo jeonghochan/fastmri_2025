@@ -1,0 +1,34 @@
+# Minimal MRI Data Augmentation Configuration
+# Conservative augmentation settings for testing and light enhancement
+# Only pixel-preserving transforms that maintain spatial dimensions
+
+# Core augmentation settings
+aug_on: true
+aug_strength: 0.2
+aug_schedule: "constant"
+aug_delay: 0
+aug_exp_decay: 5.0
+
+# Transform weights (probability of applying each transform)
+# Only use transforms that preserve exact spatial dimensions
+aug_weight_translation: 0.5  # Enable - preserves dimensions with pad/crop
+aug_weight_rotation: 0.0      # Disable - can change spatial dims
+aug_weight_scaling: 0.0       # Disable - changes spatial dims
+aug_weight_shearing: 0.0      # Disable - changes spatial dims
+aug_weight_rot90: 0.0         # Disable - swaps H/W dimensions!
+aug_weight_fliph: 0.5         # Keep - preserves exact dimensions
+aug_weight_flipv: 0.3         # Enable - preserves exact dimensions
+
+# Transform parameters (now used for translation)
+aug_max_translation_x: 0.08  # 8% horizontal translation (conservative)
+aug_max_translation_y: 0.05  # 5% vertical translation (conservative)
+aug_max_rotation: 0.0
+aug_max_scaling: 0.0
+aug_max_shearing_x: 0.0
+aug_max_shearing_y: 0.0
+
+# Processing options
+aug_upsample: false           # Disable upsampling for now
+aug_upsample_factor: 2
+aug_upsample_order: 1
+aug_interpolation_order: 1

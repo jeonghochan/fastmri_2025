@@ -1,0 +1,32 @@
+# Aggressive MRI Data Augmentation Configuration
+# Strong augmentation settings for limited data scenarios
+
+# Core augmentation settings
+aug_on: true
+aug_strength: 0.8
+aug_schedule: "exp" 
+aug_delay: 0
+aug_exp_decay: 5.0
+
+# Transform weights (probability of applying each transform)
+aug_weight_translation: 1.0
+aug_weight_rotation: 1.0
+aug_weight_scaling: 1.0
+aug_weight_shearing: 0.5
+aug_weight_rot90: 0.5
+aug_weight_fliph: 0.5
+aug_weight_flipv: 0.5
+
+# Transform parameters
+aug_max_translation_x: 0.2    # 20% of image width
+aug_max_translation_y: 0.12   # 12% of image height
+aug_max_rotation: 30.0        # 30 degrees
+aug_max_scaling: 0.25         # 25% scale variation
+aug_max_shearing_x: 10.0      # 10 degrees
+aug_max_shearing_y: 10.0      # 10 degrees
+
+# Processing options  
+aug_upsample: true
+aug_upsample_factor: 2
+aug_upsample_order: 1
+aug_interpolation_order: 1

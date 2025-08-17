@@ -1,0 +1,32 @@
+# Ultra-safe MRI Data Augmentation Configuration
+# Absolutely no transforms applied - just pass-through
+
+# Core augmentation settings
+aug_on: true
+aug_strength: 0.0  # Zero strength = no transforms applied
+aug_schedule: "constant"
+aug_delay: 0
+aug_exp_decay: 5.0
+
+# Transform weights (all completely disabled)
+aug_weight_translation: 0.0
+aug_weight_rotation: 0.0
+aug_weight_scaling: 0.0
+aug_weight_shearing: 0.0
+aug_weight_rot90: 0.0
+aug_weight_fliph: 0.0
+aug_weight_flipv: 0.0
+
+# Transform parameters (all zero)
+aug_max_translation_x: 0.0
+aug_max_translation_y: 0.0
+aug_max_rotation: 0.0
+aug_max_scaling: 0.0
+aug_max_shearing_x: 0.0
+aug_max_shearing_y: 0.0
+
+# Processing options (all disabled)
+aug_upsample: false
+aug_upsample_factor: 1
+aug_upsample_order: 1
+aug_interpolation_order: 1

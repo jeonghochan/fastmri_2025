@@ -1,6 +1,6 @@
 python train.py \
   -b 1 \
-  -e 80 \
+  -e 200 \
   -l 0.001 \
   -r 10 \
   -n 'test_Varnet/swinunet' \

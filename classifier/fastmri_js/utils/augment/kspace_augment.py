@@ -263,7 +263,7 @@ import logging
 from math import exp
 
 # k-space masking utilities
-from utils.augment.subsample import RandomMaskFunc, EquispacedMaskFractionFunc, MagicMaskFunc
+from utils.augment.subsample import RandomMaskFunc, EquispacedMaskFractionFunc, MagicMaskFunc,  UniqueMaskFunc
 
 logger = logging.getLogger(__name__)
 
@@ -293,6 +293,7 @@ class KSpaceAugmentor:
                  base_prob_randmask: float = 0.5,
                  base_prob_equimask: float = 0.5,
                  base_prob_magicmask: float = 0.5,
+                 base_prob_uniquemask: float = 0.5,
                  aug_mask = None                 
                  ):
         """
@@ -318,6 +319,7 @@ class KSpaceAugmentor:
         self.base_prob_randmask = base_prob_randmask
         self.base_prob_equimask = base_prob_equimask
         self.base_prob_magic = base_prob_magicmask
+        self.base_prob_uniquemask = base_prob_uniquemask
         self.aug_mask = aug_mask
 
         # Initialize k-space mask functions
@@ -331,7 +333,7 @@ class KSpaceAugmentor:
                                              accelerations=[4,8], allow_any_combination=True)   
         
         #if center_fraction and acceleration이 changes, mask is changed. 
-
+        self.unique_mask_func = UniqueMaskFunc()
 
 
         # Scheduling parameters
@@ -377,6 +379,7 @@ class KSpaceAugmentor:
         current_prob_randmask = self.base_prob_randmask * self.current_strength
         current_prob_equimask = self.base_prob_equimask * self.current_strength
         current_prob_magic = self.base_prob_magic * self.current_strength
+        current_prob_uniquemask = self.base_prob_uniquemask * self.current_strength
 
         # Apply horizontal flip in k-space domain
         if self.rng.rand() < current_prob_hflip:
@@ -449,6 +452,20 @@ class KSpaceAugmentor:
             transforms_applied.append('magicmask')
             print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
         
+        if self.rng.rand() < current_prob_uniquemask:
+            H, W = kspace_complex.shape[-2:]   # H=768, W=396
+            mask, _ = self.unique_mask_func((1, W, 1), seed=None)  # (1, W, 1)
+            mask = mask.to(kspace_complex.device)
+            # print("raw mask:", mask.shape)                # (1, W, 1)
+            mask = mask.transpose(-1, -2).expand(1, H, W)
+            # print("after expand:", mask.shape)            # (1, H, W)
+            kspace_complex = kspace_complex* mask
+            self.aug_mask = mask
+            transforms_applied.append('uniquemask')
+            print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
+
+
+
         # Convert back to FastMRI format
         kspace_result = torch.stack([kspace_complex.real, kspace_complex.imag], dim=-1)
         
@@ -457,7 +474,13 @@ class KSpaceAugmentor:
             logger.debug(f"Applied k-space transforms to {fname}, slice {slice_num}: {transforms_applied} "
                         f"(strength={self.current_strength:.3f}, epoch={self.current_epoch})")
         
-        return kspace_result, target_tensor, self.aug_mask
+        #if you want to check the verify,
+        # return kspace_result, target_tensor, self.aug_mask
+    
+        return kspace_result, target_tensor
+
+
+        
     
     def _hflip_kspace(self, kspace: torch.Tensor) -> torch.Tensor:
         """
@@ -568,6 +591,7 @@ class KSpaceAugmentor:
             'randmask' : self.base_prob_randmask * self.current_strength,
             'equimask': self.base_prob_equimask * self.current_strength,
             'magicmask': self.base_prob_magic * self.current_strength,
+            'uniquemask': self.base_prob_uniquemask * self.current_strength,
             'strength': self.current_strength,
             'epoch': self.current_epoch,
         }
@@ -588,7 +612,8 @@ class KSpaceAugmentor:
                 # 'shift': self.base_prob_shift
                 'randmask': self.base_prob_randmask,
                 'equimask': self.base_prob_equimask,
-                'magicmask': self.base_prob_magic
+                'magicmask': self.base_prob_magic,
+                'uniquemask': self.base_prob_uniquemask,
             },
             'current_probabilities': self.get_current_probabilities()
         }

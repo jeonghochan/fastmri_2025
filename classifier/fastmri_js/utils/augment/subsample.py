@@ -280,6 +280,85 @@ class EquiSpacedMaskFunc(MaskFunc):
         mask[offset::acceleration] = 1
 
         return mask
+# make all equivalent interval masking generation function
+# subsample.py 내부
+
+class UniqueMaskFunc(MaskFunc):
+    """
+    Uniform equispaced sampling over the whole k-space
+    with exact target count round(N/acc).
+    - No center block (center_fraction 무시)
+    - Returns ONLY the mask tensor (no tuple)
+    - acceleration is sampled randomly from a given range.
+    """
+    def __init__(self,
+                 center_fractions: Sequence[float] = (0.0,),
+                 accelerations: Sequence[float] = (1,),           # 미사용(형식상)
+                 allow_any_combination: bool = False,             # 미사용
+                 seed: Optional[int] = None,
+                 acc_range: Tuple[float, float] = (4, 8),         # ← 가속도 범위
+                 integer_accel: bool = True,                      # ← 정수 가속도만 사용할지
+                 per_call: bool = True):                          # ← 매 호출마다 샘플링
+        super().__init__(center_fractions, accelerations, allow_any_combination, seed)
+        self.acc_range = acc_range
+        self.integer_accel = integer_accel
+        self.per_call = per_call
+        self._fixed_acc = None
+        if not self.per_call:
+            self._fixed_acc = self._sample_acceleration()
+
+    def __call__(self, shape: Sequence[int],
+                 offset: Optional[int] = None,
+                 seed: Optional[Union[int, Tuple[int, ...]]] = None) -> torch.Tensor:
+        # NOTE: 부모의 (mask, info) 규약을 따르지 않고 mask만 반환
+        if len(shape) < 3:
+            raise ValueError("Shape should have 3 or more dimensions")
+        with temp_seed(self.rng, seed):
+            return self.sample_mask(shape, offset)
+
+    # ------------------- 내부 유틸 -------------------
+    def _sample_acceleration(self) -> float:
+        a0, a1 = float(self.acc_range[0]), float(self.acc_range[1])
+        if self.integer_accel:
+            lo = int(np.ceil(a0))
+            hi = int(np.floor(a1))
+            if hi < lo:
+                hi = lo
+            return int(self.rng.integers(lo, hi + 1))
+        else:
+            return float(self.rng.uniform(a0, a1))
+
+    # ------------------- 핵심 로직 -------------------
+    def sample_mask(self, shape: Sequence[int], offset: Optional[int]) -> torch.Tensor:
+        num_cols = int(shape[-2])
+
+        # 가속도 샘플 (범위에서 무작위)
+        acc = self._fixed_acc if (self._fixed_acc is not None) else self._sample_acceleration()
+        acc = max(1e-6, float(acc))  # zero-div 방어
+
+        # 목표 샘플 개수 (정확히 round(N/acc))
+        target = int(np.clip(round(num_cols / acc), 1, num_cols))
+
+        # 등간격 인덱스
+        idx = np.linspace(0, num_cols - 1, num=target, endpoint=True)
+        idx = np.unique(np.round(idx).astype(np.int64))
+
+        # 시작 위상 다양화(roll)
+        if offset is None:
+            # 한 주기 내에서 적당한 위상 변화(과도한 롤 방지)
+            step_est = max(1, int(round(num_cols / target)))
+            roll = int(self.rng.integers(0, step_est))
+        else:
+            roll = int(offset) % num_cols
+
+        mask1d = np.zeros(num_cols, dtype=np.float32)
+        mask1d[idx] = 1.0
+        if roll:
+            mask1d = np.roll(mask1d, roll)
+
+        # (1,1,W) 브로드캐스트 형태로 변환하여 반환 (단일 mask만)
+        mask = self.reshape_mask(mask1d, shape)
+        return mask
 
 
 class EquispacedMaskFractionFunc(MaskFunc):

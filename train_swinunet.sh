@@ -7,4 +7,4 @@ python train.py \
   -t '/storage/junsoo/train/' \
   -v '/storage/junsoo/val/' \
   --use-transformer \
-  --kspace-augment-config configs/kspace_augment.yaml
+  --kspace-augment-config configs/kspace_mask_augment.yaml

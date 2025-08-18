@@ -261,6 +261,7 @@ import numpy as np
 from typing import Tuple, Optional
 import logging
 from math import exp
+import random
 
 # k-space masking utilities
 from utils.augment.subsample import RandomMaskFunc, EquispacedMaskFractionFunc, MagicMaskFunc, UniqueMaskFunc
@@ -333,8 +334,8 @@ class KSpaceAugmentor:
                                              accelerations=[4,8], allow_any_combination=True)   
         
         #if center_fraction and acceleration이 changes, mask is changed. 
-        self.rand_mask_func = UniqueMaskFunc(center_fractions=[0.04,0.08],
-                                        accelerations=[5,7,9],
+        self.unique_mask_func = UniqueMaskFunc(center_fractions=[0.04,0.08],
+                                        accelerations=[9,10],
                                         allow_any_combination=True)
 
 
@@ -352,8 +353,9 @@ class KSpaceAugmentor:
         
         # Update strength for initial epoch
         self._update_strength()
-        
-    def augment_kspace(self, kspace_tensor: torch.Tensor, 
+
+    def augment_kspace(self, clean_kspace: np.ndarray,
+                      kspace_tensor: torch.Tensor,
                       target_tensor: torch.Tensor,
                       fname: str, slice_num: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -370,7 +372,10 @@ class KSpaceAugmentor:
         """
         # Convert to complex tensor for easier manipulation
         kspace_complex = torch.complex(kspace_tensor[..., 0], kspace_tensor[..., 1])
-        
+
+        clean_kspace_tensor = torch.from_numpy(clean_kspace).to(kspace_tensor.device)
+        clean_kspace_complex = torch.stack((clean_kspace_tensor.real, clean_kspace_tensor.imag), dim=-1)
+
         # Track which transforms are applied for target consistency
         transforms_applied = []
         
@@ -405,71 +410,74 @@ class KSpaceAugmentor:
         #     transforms_applied.append(f'shift_h{shift_h}_w{shift_w}')
 
         # Apply new mask augmentation
-        #todo
+
         if self.rng.rand() < current_prob_randmask:
             # Apply new mask augmentation (always applied, no probability)
             # Generate mask from subsample.py
-            H, W = kspace_complex.shape[-2:]   # H=768, W=396
+            H, W = clean_kspace_complex.shape[-2:]   # H=768, W=396
             print(H, W)
             
             mask, _ = self.equispaced_mask_func((1, W, 1), seed=None)  # (1, W, 1)
-            mask = mask.to(kspace_complex.device)
+            mask = mask.to(clean_kspace_complex.device)
             # print("raw mask:", mask.shape)                # (1, W, 1)
             
             mask = mask.transpose(-1, -2).expand(1, H, W)
             # print("after expand:", mask.shape)            # (1, H, W)
         
-            mask = mask.to(kspace_complex.device)
+            mask = mask.to(clean_kspace_complex.device)
 
             # Apply mask augmentation        
-            kspace_complex = kspace_complex * mask
+            clean_kspace_complex = clean_kspace_complex * mask
             
             #save mask
             self.aug_mask = mask
             transforms_applied.append('randmask')
             # print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
+            kspace_result = torch.stack([clean_kspace_complex.real, clean_kspace_complex.imag], dim=-1)
 
         
-        if self.rng.rand() < current_prob_equimask:
-            H, W = kspace_complex.shape[-2:]   # H=768, W=396
+        elif self.rng.rand() < current_prob_randmask + current_prob_equimask:
+            H, W = clean_kspace_complex.shape[-2:]   # H=768, W=396
             mask, _ = self.equispaced_mask_func((1, W, 1), seed=None)  # (1, W, 1)
-            mask = mask.to(kspace_complex.device)
+            mask = mask.to(clean_kspace_complex.device)
             # print("raw mask:", mask.shape)                # (1, W, 1)
             mask = mask.transpose(-1, -2).expand(1, H, W)
             # print("after expand:", mask.shape)            # (1, H, W)
-            kspace_complex = kspace_complex * mask
+            clean_kspace_complex = clean_kspace_complex * mask
             self.aug_mask = mask
             transforms_applied.append('equimask')
             # print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
+            kspace_result = torch.stack([clean_kspace_complex.real, clean_kspace_complex.imag], dim=-1)
 
-        if self.rng.rand() < current_prob_magic:
-            H, W = kspace_complex.shape[-2:]   # H=768, W=396
+        elif self.rng.rand() < current_prob_randmask + current_prob_equimask + current_prob_magic:
+            H, W = clean_kspace_complex.shape[-2:]   # H=768, W=396
             mask, _ = self.equispaced_mask_func((1, W, 1), seed=None)  # (1, W, 1)
-            mask = mask.to(kspace_complex.device)
+            mask = mask.to(clean_kspace_complex.device)
             # print("raw mask:", mask.shape)                # (1, W, 1)
             mask = mask.transpose(-1, -2).expand(1, H, W)
             # print("after expand:", mask.shape)            # (1, H, W)
-            kspace_complex = kspace_complex* mask
+            clean_kspace_complex = clean_kspace_complex* mask
             self.aug_mask = mask
             transforms_applied.append('magicmask')
             # print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
-        
-        if self.rng.rand() < current_prob_uniquemask:
-            H, W = kspace_complex.shape[-2:]   # H=768, W=396
+            kspace_result = torch.stack([clean_kspace_complex.real, clean_kspace_complex.imag], dim=-1)
+
+        elif self.rng.rand() < current_prob_randmask + current_prob_equimask + current_prob_magic + current_prob_uniquemask:
+            H, W = clean_kspace_complex.shape[-2:]   # H=768, W=396
             mask, _ = self.unique_mask_func((1, W, 1), seed=None)  # (1, W, 1)
-            mask = mask.to(kspace_complex.device)
+            mask = mask.to(clean_kspace_complex.device)
             # print("raw mask:", mask.shape)                # (1, W, 1)
             mask = mask.transpose(-1, -2).expand(1, H, W)
             # print("after expand:", mask.shape)            # (1, H, W)
-            kspace_complex = kspace_complex* mask
+            clean_kspace_complex = clean_kspace_complex* mask
             self.aug_mask = mask
             transforms_applied.append('uniquemask')
             # print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
+            kspace_result = torch.stack([clean_kspace_complex.real, clean_kspace_complex.imag], dim=-1)
 
+        else:
+            kspace_result = torch.stack([kspace_complex.real, kspace_complex.imag], dim=-1)
 
-
-        # Convert back to FastMRI format
-        kspace_result = torch.stack([kspace_complex.real, kspace_complex.imag], dim=-1)
         
         # Debug log
         if transforms_applied:

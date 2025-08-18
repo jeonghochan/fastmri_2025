@@ -105,13 +105,16 @@ class AugmentedDataTransform(DataTransform):
         mask_tensor, kspace_tensor, target_tensor, maximum, fname, slice_num = super().__call__(
             mask, input, target, attrs, fname, slice_num
         )
+
+        clean_kspace = input
         
         # Apply k-space augmentation if enabled and in training mode
         if self.use_augmentation and self.training and self.augmentor is not None:
             try:
                 # Apply k-space domain augmentation
+                
                 kspace_tensor, target_tensor = self.augmentor.augment_kspace(
-                    kspace_tensor, target_tensor, fname, slice_num
+                    clean_kspace, kspace_tensor, target_tensor, fname, slice_num
                 )
                 logger.debug(f"Applied k-space augmentation to {fname}, slice {slice_num}")
                 

@@ -85,7 +85,7 @@ def validate(args, model, data_loader):
     return metric_loss, num_subjects, reconstructions, targets, None, time.perf_counter() - start
 
 
-def save_model(args, exp_dir, epoch, model, optimizer, best_val_loss, is_new_best, top5_models):
+def save_model(args, exp_dir, epoch, model, optimizer, best_val_loss, is_new_best, top3_models):
     torch.save({
             'epoch': epoch,
             'best_val_loss': best_val_loss,
@@ -101,28 +101,28 @@ def save_model(args, exp_dir, epoch, model, optimizer, best_val_loss, is_new_bes
 
     current_loss = best_val_loss.item() if hasattr(best_val_loss, 'item') else best_val_loss
 
-    # Add current model to top5_models list
-    top5_models.append({
+    # Add current model to top3_models list
+    top3_models.append({
         'epoch': epoch,
         'val_loss': current_loss,
         'model_path': exp_dir / f'model_epoch_{epoch}.pt'
     })
 
     # Sort by validation loss and keep only top 5
-    top5_models.sort(key=lambda x: x['val_loss'])
+    top3_models.sort(key=lambda x: x['val_loss'])
 
     # Remove old models if we have more than 5
-    while len(top5_models) > 5:
-        removed_model = top5_models.pop()
+    while len(top3_models) > 5:
+        removed_model = top3_models.pop()
         if removed_model['model_path'].exists():
             removed_model['model_path'].unlink()
 
     # Only save epoch files for models in top 5
-    for model_info in top5_models:
+    for model_info in top3_models:
         if model_info['epoch'] == epoch and not model_info['model_path'].exists():
             shutil.copyfile(exp_dir / 'model.pt', model_info['model_path'])
 
-    return top5_models
+    return top3_models
 
         
 def train(args, kspace_augment_config_path=None):
@@ -146,10 +146,8 @@ def train(args, kspace_augment_config_path=None):
 
     best_val_loss = 1.
     start_epoch = 0
-    top5_models = []  # List to track top 5 models
+    top3_models = []  # List to track top 3 models
 
-    breakpoint()
-    
     # Resume training from checkpoint if specified
     if hasattr(args, 'resume') and args.resume:
         if os.path.isfile(args.resume):
@@ -203,7 +201,7 @@ def train(args, kspace_augment_config_path=None):
         is_new_best = val_loss < best_val_loss
         best_val_loss = min(best_val_loss, val_loss)
 
-        top5_models = save_model(args, args.exp_dir, epoch + 1, model, optimizer, best_val_loss, is_new_best, top5_models)
+        top3_models = save_model(args, args.exp_dir, epoch + 1, model, optimizer, best_val_loss, is_new_best, top3_models)
         print(
             f'Epoch = [{epoch:4d}/{args.num_epochs:4d}] TrainLoss = {train_loss:.4g} '
             f'ValLoss = {val_loss:.4g} TrainTime = {train_time:.4f}s ValTime = {val_time:.4f}s',

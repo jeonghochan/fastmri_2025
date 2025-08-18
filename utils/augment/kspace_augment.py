@@ -374,7 +374,8 @@ class KSpaceAugmentor:
         kspace_complex = torch.complex(kspace_tensor[..., 0], kspace_tensor[..., 1])
 
         clean_kspace_tensor = torch.from_numpy(clean_kspace).to(kspace_tensor.device)
-        clean_kspace_complex = torch.stack((clean_kspace_tensor.real, clean_kspace_tensor.imag), dim=-1)
+        clean_kspace_stack = torch.stack((clean_kspace_tensor.real, clean_kspace_tensor.imag), dim=-1)
+        clean_kspace_complex = torch.complex(clean_kspace_stack[..., 0], clean_kspace_stack[..., 1])
 
         # Track which transforms are applied for target consistency
         transforms_applied = []

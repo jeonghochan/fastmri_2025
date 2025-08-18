@@ -10,12 +10,12 @@ base_prob_equimask: 0.5
 base_prob_magicmask: 0.5
 base_prob_uniquemask: 0.5
 # Shift parameters
-max_shift_fraction: 0.05  # Maximum shift as fraction of image size (5%)
+max_shift_fraction: 0.0  # Maximum shift as fraction of image size (5%)
 
 # Scheduling parameters (following MRAugment design)
 aug_strength: 1.0         # Maximum augmentation strength (0.0-1.0)
 aug_schedule: 'exp'       # Schedule type: 'constant', 'ramp', 'exp'
-aug_delay: 10             # Number of epochs to delay augmentation start
+aug_delay: 0             # Number of epochs to delay augmentation start
 max_epochs: 100           # Total number of training epochs (for scheduling)
 aug_exp_decay: 5.0        # Exponential decay coefficient (for 'exp' schedule)
 

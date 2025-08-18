@@ -1,0 +1,11 @@
+python train.py \
+  -b 1 \
+  -e 40 \
+  -l 0.0001 \
+  -r 10 \
+  -n 'test_Varnet/unet_2_mod' \
+  -t '/storage/junsoo/train/' \
+  -v '/storage/junsoo/val/' \
+  --chans 18 \
+  --kspace-augment-config configs/kspace_mask_augment.yaml \
+  --resume /home/junsoo/result/test_Varnet/unet/checkpoints/model_epoch_33.pt

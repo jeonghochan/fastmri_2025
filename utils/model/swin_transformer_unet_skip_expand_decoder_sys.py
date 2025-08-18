@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
 from einops import rearrange
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
@@ -52,6 +53,7 @@ def window_partition(x, window_size):
         windows: (num_windows*B, window_size, window_size, C)
     """
     B, H, W, C = x.shape
+    # print(f"Window partitioning input shape: {x.shape}")
     x = x.view(B, H // window_size, window_size, W // window_size, window_size, C)
     windows = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_size, window_size, C)
     return windows
@@ -364,19 +366,7 @@ class PatchExpand(nn.Module):
         H, W = self.input_resolution
         x = self.expand(x)
         B, L, C = x.shape
-        
-        # Dynamic resolution calculation if L doesn't match expected
-        if L != H * W:
-            # Calculate actual H, W from feature length
-            import math
-            total_patches = L
-            aspect_ratio = W / H  # W/H ratio from expected resolution
-            H_actual = int(math.sqrt(total_patches / aspect_ratio))
-            W_actual = total_patches // H_actual
-            while H_actual * W_actual != total_patches and H_actual > 1:
-                H_actual -= 1 
-                W_actual = total_patches // H_actual
-            H, W = H_actual, W_actual
+        assert L == H * W, "input feature has wrong size"
 
         x = x.view(B, H, W, C)
         x = rearrange(x, 'b h w (p1 p2 c)-> b (h p1) (w p2) c', p1=2, p2=2, c=C // 4)
@@ -403,19 +393,7 @@ class FinalPatchExpand_X4(nn.Module):
         H, W = self.input_resolution
         x = self.expand(x)
         B, L, C = x.shape
-        
-        # Dynamic resolution calculation if L doesn't match expected
-        if L != H * W:
-            # Calculate actual H, W from feature length
-            import math
-            total_patches = L
-            aspect_ratio = W / H  # W/H ratio from expected resolution
-            H_actual = int(math.sqrt(total_patches / aspect_ratio))
-            W_actual = total_patches // H_actual
-            while H_actual * W_actual != total_patches and H_actual > 1:
-                H_actual -= 1 
-                W_actual = total_patches // H_actual
-            H, W = H_actual, W_actual
+        assert L == H * W, "input feature has wrong size"
 
         x = x.view(B, H, W, C)
         x = rearrange(x, 'b h w (p1 p2 c)-> b (h p1) (w p2) c', p1=self.dim_scale, p2=self.dim_scale,
@@ -566,8 +544,11 @@ class PatchEmbed(nn.Module):
         norm_layer (nn.Module, optional): Normalization layer. Default: None
     """
 
-    def __init__(self, img_size=224, patch_size=4, in_chans=3, embed_dim=96, norm_layer=None):
+    def __init__(self, img_size=None, patch_size=4, in_chans=3, embed_dim=96, norm_layer=None):
         super().__init__()
+        # Use a default size if None provided - first input size will determine actual operation
+        if img_size is None:
+            img_size = (768, 512)  # Use common FastMRI size as default
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
         patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]]
@@ -587,7 +568,8 @@ class PatchEmbed(nn.Module):
 
     def forward(self, x):
         B, C, H, W = x.shape
-        # Simple forward without padding - dimensions handled upstream
+        
+        # Process input with consistent padding
         x = self.proj(x).flatten(2).transpose(1, 2)  # B Ph*Pw C
         if self.norm is not None:
             x = self.norm(x)
@@ -627,7 +609,7 @@ class SwinTransformerSys(nn.Module):
         use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False
     """
 
-    def __init__(self, img_size=224, patch_size=4, in_chans=3, num_classes=1000,
+    def __init__(self, img_size=(768, 512), patch_size=4, in_chans=3, num_classes=1000,
                  embed_dim=96, depths=[2, 2, 2, 2], depths_decoder=[1, 2, 2, 2], num_heads=[3, 6, 12, 24],
                  window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
@@ -635,10 +617,14 @@ class SwinTransformerSys(nn.Module):
                  use_checkpoint=False, final_upsample="expand_first", **kwargs):
         super().__init__()
 
-        print(
-            "SwinTransformerSys expand initial----depths:{};depths_decoder:{};drop_path_rate:{};num_classes:{}".format(
-                depths,
-                depths_decoder, drop_path_rate, num_classes))
+        # Handle None img_size
+        if img_size is None:
+            img_size = (768, 512)  # Default FastMRI size
+            
+        # print(
+        #     "SwinTransformerSys expand initial----depths:{};depths_decoder:{};drop_path_rate:{};num_classes:{}".format(
+        #         depths,
+        #         depths_decoder, drop_path_rate, num_classes))
 
         self.num_classes = num_classes
         self.num_layers = len(depths)
@@ -655,11 +641,9 @@ class SwinTransformerSys(nn.Module):
             img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim,
             norm_layer=norm_layer if self.patch_norm else None)
         
-        # Hardcoded for FastMRI with window_size=6 and 3 stages
-        # Pad 768×400 → 768×480 → 192×120 patches (3 stages for memory efficiency)
-        patches_resolution = (192, 120)  # 192÷6=32, 120÷6=20 ✅
+        num_patches = self.patch_embed.num_patches
+        patches_resolution = self.patch_embed.patches_resolution
         self.patches_resolution = patches_resolution
-        num_patches = patches_resolution[0] * patches_resolution[1]
 
         # absolute position embedding
         if self.ape:
@@ -671,14 +655,12 @@ class SwinTransformerSys(nn.Module):
         # stochastic depth
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
 
-        # build encoder and bottleneck layers  
-        # Hardcoded resolutions for 192×120 patches, 3 stages, window_size=6
-        encoder_resolutions = [(192, 120), (96, 60), (48, 30)]
-        
+        # build encoder and bottleneck layers
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
             layer = BasicLayer(dim=int(embed_dim * 2 ** i_layer),
-                               input_resolution=encoder_resolutions[i_layer],
+                               input_resolution=(patches_resolution[0] // (2 ** i_layer),
+                                                 patches_resolution[1] // (2 ** i_layer)),
                                depth=depths[i_layer],
                                num_heads=num_heads[i_layer],
                                window_size=window_size,
@@ -692,9 +674,6 @@ class SwinTransformerSys(nn.Module):
             self.layers.append(layer)
 
         # build decoder layers
-        # Hardcoded decoder resolutions for 192×120, 3 stages, window_size=6
-        decoder_resolutions = [(48, 30), (96, 60), (192, 120)]
-        
         self.layers_up = nn.ModuleList()
         self.concat_back_dim = nn.ModuleList()
         for i_layer in range(self.num_layers):
@@ -703,11 +682,14 @@ class SwinTransformerSys(nn.Module):
                                                   self.num_layers - 1 - i_layer))) if i_layer > 0 else nn.Identity()
             if i_layer == 0:
                 layer_up = PatchExpand(
-                    input_resolution=decoder_resolutions[i_layer],
+                    input_resolution=(patches_resolution[0] // (2 ** (self.num_layers - 1 - i_layer)),
+                                      patches_resolution[1] // (2 ** (self.num_layers - 1 - i_layer))),
                     dim=int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)), dim_scale=2, norm_layer=norm_layer)
             else:
                 layer_up = BasicLayer_up(dim=int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)),
-                                         input_resolution=decoder_resolutions[i_layer],
+                                         input_resolution=(
+                                         patches_resolution[0] // (2 ** (self.num_layers - 1 - i_layer)),
+                                         patches_resolution[1] // (2 ** (self.num_layers - 1 - i_layer))),
                                          depth=depths[(self.num_layers - 1 - i_layer)],
                                          num_heads=num_heads[(self.num_layers - 1 - i_layer)],
                                          window_size=window_size,
@@ -726,8 +708,20 @@ class SwinTransformerSys(nn.Module):
         self.norm_up = norm_layer(self.embed_dim)
 
         if self.final_upsample == "expand_first":
-            print("---final upsample expand_first---")
-            self.up = FinalPatchExpand_X4(input_resolution=(img_size // patch_size, img_size // patch_size),
+            # print("---final upsample expand_first---")
+            # Handle both tuple and single value img_size
+            if isinstance(img_size, (tuple, list)):
+                img_h, img_w = img_size[0], img_size[1]
+            else:
+                img_h, img_w = img_size, img_size
+            
+            # Handle patch_size (can be tuple or int)
+            if isinstance(patch_size, (tuple, list)):
+                patch_h, patch_w = patch_size[0], patch_size[1]
+            else:
+                patch_h, patch_w = patch_size, patch_size
+                
+            self.up = FinalPatchExpand_X4(input_resolution=(img_h // patch_h, img_w // patch_w),
                                           dim_scale=4, dim=embed_dim)
             self.output = nn.Conv2d(in_channels=embed_dim, out_channels=self.num_classes, kernel_size=1, bias=False)
 
@@ -749,55 +743,48 @@ class SwinTransformerSys(nn.Module):
     @torch.jit.ignore
     def no_weight_decay_keywords(self):
         return {'relative_position_bias_table'}
-    
-    # Encoder and Bottleneck
+
+    # FIX 1: Simplify the forward_features method.
     def forward_features(self, x):
         x = self.patch_embed(x)
         if self.ape:
+            # Note: Absolute Position Embedding (APE) is size-dependent.
+            # If input size changes, this embedding may need to be interpolated or regeneration.
+            # For a fixed padded size, this is not an issue.
             x = x + self.absolute_pos_embed
         x = self.pos_drop(x)
-        x_downsample = []
 
+        x_downsample = []
         for layer in self.layers:
             x_downsample.append(x)
             x = layer(x)
 
-        x = self.norm(x)  # B L C
-
+        x = self.norm(x)
         return x, x_downsample
 
-    # Dencoder and Skip connection
+    # FIX 2: Simplify the forward_up_features method. Remove all dynamic logic.
     def forward_up_features(self, x, x_downsample):
         for inx, layer_up in enumerate(self.layers_up):
             if inx == 0:
                 x = layer_up(x)
             else:
-                # For 3 stages: use (num_layers-1) - inx = 2 - inx
-                x = torch.cat([x, x_downsample[2 - inx]], -1)
+                # Use a robust index for the skip connection
+                skip_connection_index = self.num_layers - 1 - inx
+                skip_connection = x_downsample[skip_connection_index]
+
+                # The dimensions will now match because the model was initialized
+                # with the correct padded resolution throughout.
+                x = torch.cat([x, skip_connection], -1)
                 x = self.concat_back_dim[inx](x)
                 x = layer_up(x)
 
-        x = self.norm_up(x)  # B L C
-
+        x = self.norm_up(x)
         return x
 
     def up_x4(self, x):
-        # Use hardcoded final resolution for FastMRI (after all upsampling)
-        H, W = 192, 120  # Final patch resolution before 4x upsampling
+        H, W = self.patches_resolution
         B, L, C = x.shape
-        
-        # Dynamic calculation if L doesn't match expected
-        if L != H * W:
-            # Calculate actual H, W from feature length
-            import math
-            total_patches = L
-            aspect_ratio = 128 / 192  # W/H ratio
-            H_actual = int(math.sqrt(total_patches / aspect_ratio))
-            W_actual = total_patches // H_actual
-            while H_actual * W_actual != total_patches and H_actual > 1:
-                H_actual -= 1 
-                W_actual = total_patches // H_actual
-            H, W = H_actual, W_actual
+        assert L == H * W, "input features has wrong size"
 
         if self.final_upsample == "expand_first":
             x = self.up(x)
@@ -808,10 +795,10 @@ class SwinTransformerSys(nn.Module):
         return x
 
     def forward(self, x):
+        # This assumes `x` has already been padded to the model's expected input size
         x, x_downsample = self.forward_features(x)
         x = self.forward_up_features(x, x_downsample)
-        x = self.up_x4(x)
-
+        x = self.up_x4(x) # Your final upsampling layer
         return x
 
     def flops(self):

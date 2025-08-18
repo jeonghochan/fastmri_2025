@@ -20,6 +20,8 @@ def parse():
     parser.add_argument('--chans', type=int, default=9, help='Number of channels for cascade U-Net')
     parser.add_argument('--sens_chans', type=int, default=4, help='Number of channels for sensitivity map U-Net')
     parser.add_argument("--input_key", type=str, default='kspace', help='Name of input key')
+    parser.add_argument('-o', '--output_dir', type=str, default='reconstructions_leaderboard', help='Output directory name')
+    parser.add_argument('-c', '--checkpoint', type=str, default=None, help='Specific checkpoint filename (e.g., best_model.pt)')
     # Note: Architecture (UNet vs SwinUNet) is auto-detected from saved model
 
     args = parser.parse_args()
@@ -34,13 +36,13 @@ if __name__ == '__main__':
     
     # acc4
     args.data_path = args.path_data / "acc4"
-    args.forward_dir = '../result' / args.net_name / 'reconstructions_leaderboard' / "acc4"
+    args.forward_dir = '../result' / args.net_name / args.output_dir / "acc4"
     print(args.forward_dir)
     forward(args)
     
     # acc8
     args.data_path = args.path_data / "acc8"
-    args.forward_dir = '../result' / args.net_name / 'reconstructions_leaderboard' / "acc8"
+    args.forward_dir = '../result' / args.net_name / args.output_dir / "acc8"
     print(args.forward_dir)
     forward(args)
     

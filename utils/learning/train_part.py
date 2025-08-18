@@ -26,6 +26,11 @@ def train_epoch(args, epoch, model, data_loader, optimizer, loss_type):
         kspace = kspace.cuda(non_blocking=True)
         target = target.cuda(non_blocking=True)
         maximum = maximum.cuda(non_blocking=True)
+        
+        # Ensure FP32 calculation (mask stays boolean for torch.where)
+        kspace = kspace.float()
+        target = target.float()
+        maximum = maximum.float()
 
         output = model(kspace, mask)
         loss = loss_type(output, target, maximum)
@@ -57,6 +62,10 @@ def validate(args, model, data_loader):
             mask, kspace, target, _, fnames, slices = data
             kspace = kspace.cuda(non_blocking=True)
             mask = mask.cuda(non_blocking=True)
+            
+            # Ensure FP32 calculation (mask stays boolean for torch.where)
+            kspace = kspace.float()
+            
             output = model(kspace, mask)
 
             for i in range(output.shape[0]):
@@ -77,50 +86,46 @@ def validate(args, model, data_loader):
 
 
 def save_model(args, exp_dir, epoch, model, optimizer, best_val_loss, is_new_best, top5_models):
-    torch.save(
-        {
-            'epoch': epoch,
-            'args': args,
-            'model': model.state_dict(),
-            'optimizer': optimizer.state_dict(),
-            'best_val_loss': best_val_loss,
-            'exp_dir': exp_dir
-        },
-        f=exp_dir / 'model.pt'
-    )
-    if is_new_best:
-        shutil.copyfile(exp_dir / 'model.pt', exp_dir / 'best_model.pt')
-    
-    # Save top 5 models
-    current_loss = best_val_loss.item() if hasattr(best_val_loss, 'item') else best_val_loss
-    
-    # Add current model to top5_models list
-    top5_models.append({
-        'epoch': epoch,
-        'val_loss': current_loss,
-        'model_path': exp_dir / f'model_epoch_{epoch}.pt'
-    })
-    
-    # Sort by validation loss and keep only top 5
-    top5_models.sort(key=lambda x: x['val_loss'])
-    
-    # Remove old models if we have more than 5
-    while len(top5_models) > 5:
-        # Remove the worst model file if it exists
-        removed_model = top5_models.pop()
-        if removed_model['model_path'].exists():
-            removed_model['model_path'].unlink()
-    
-    # Save current model with epoch number
-    shutil.copyfile(exp_dir / 'model.pt', exp_dir / f'model_epoch_{epoch}.pt')
-    
-    return top5_models
+      torch.save({...}, f=exp_dir / 'model.pt')
+
+      if is_new_best:
+          shutil.copyfile(exp_dir / 'model.pt', exp_dir / 'best_model.pt')
+
+      current_loss = best_val_loss.item() if hasattr(best_val_loss, 'item') else best_val_loss
+
+      # Add current model to top5_models list
+      top5_models.append({
+          'epoch': epoch,
+          'val_loss': current_loss,
+          'model_path': exp_dir / f'model_epoch_{epoch}.pt'
+      })
+
+      # Sort by validation loss and keep only top 5
+      top5_models.sort(key=lambda x: x['val_loss'])
+
+      # Remove old models if we have more than 5
+      while len(top5_models) > 5:
+          removed_model = top5_models.pop()
+          if removed_model['model_path'].exists():
+              removed_model['model_path'].unlink()
+
+      # Only save epoch files for models in top 5
+      for model_info in top5_models:
+          if model_info['epoch'] == epoch and not model_info['model_path'].exists():
+              shutil.copyfile(exp_dir / 'model.pt', model_info['model_path'])
+
+      return top5_models
 
         
 def train(args, kspace_augment_config_path=None):
     device = torch.device(f'cuda:{args.GPU_NUM}' if torch.cuda.is_available() else 'cpu')
     torch.cuda.set_device(device)
     print('Current cuda device: ', torch.cuda.current_device())
+    
+    # Force FP32 for GTX 1080 compatibility
+    torch.backends.cudnn.benchmark = True
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
 
     model = VarNet(num_cascades=args.cascade, 
                    chans=args.chans, 
@@ -134,6 +139,40 @@ def train(args, kspace_augment_config_path=None):
     best_val_loss = 1.
     start_epoch = 0
     top5_models = []  # List to track top 5 models
+    
+    # Resume training from checkpoint if specified
+    if hasattr(args, 'resume') and args.resume:
+        if os.path.isfile(args.resume):
+            print(f"=> Loading checkpoint '{args.resume}'")
+            try:
+                # Load with weights_only=False to get full checkpoint dictionary (like in reconstruct.py)
+                checkpoint = torch.load(args.resume, map_location=device, weights_only=False)
+                
+                # Check if checkpoint is a dictionary (full checkpoint) or just model weights
+                if isinstance(checkpoint, dict) and 'model' in checkpoint:
+                    # Full checkpoint with metadata
+                    start_epoch = checkpoint.get('epoch', 0)
+                    best_val_loss = checkpoint.get('best_val_loss', 1.)
+                    if hasattr(best_val_loss, 'item'):
+                        best_val_loss = best_val_loss.item()
+                    model.load_state_dict(checkpoint['model'])
+                    if 'optimizer' in checkpoint:
+                        optimizer.load_state_dict(checkpoint['optimizer'])
+                    print(f"=> Loaded full checkpoint (epoch {start_epoch})")
+                    print(f"=> Previous best validation loss: {best_val_loss}")
+                elif isinstance(checkpoint, dict):
+                    # Assume it's just model state_dict
+                    model.load_state_dict(checkpoint)
+                    print(f"=> Loaded model weights only (starting from epoch 0)")
+                else:
+                    print(f"=> Unexpected checkpoint format: {type(checkpoint)}")
+                    print("=> Starting from scratch")
+                    
+            except Exception as e:
+                print(f"=> Failed to load checkpoint: {e}")
+                print("=> Starting training from scratch")
+        else:
+            print(f"=> No checkpoint found at '{args.resume}'")
 
     # Create data loaders with k-space augmentation support
     train_loader = create_data_loaders(data_path=args.data_path_train, args=args, shuffle=True, augment_config_path=kspace_augment_config_path)

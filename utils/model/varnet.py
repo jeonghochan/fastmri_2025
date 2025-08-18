@@ -24,7 +24,7 @@ class SwinConfig:
     def __init__(self, in_chans=2, out_chans=2, chans=32, num_pools=4, drop_prob=0.0, img_size=None):
         # DATA config - Use None for dynamic sizing
         class DataConfig:
-            IMG_SIZE = img_size if img_size is not None else 224  # Default fallback
+            IMG_SIZE = img_size if img_size is not None else 768  # Use 768 for proper divisibility with window_size=6
         
         # MODEL config
         class ModelConfig:
@@ -36,8 +36,8 @@ class SwinConfig:
                 IN_CHANS = in_chans  # Use actual input channels (2 for MRI)
                 EMBED_DIM = max(48, chans)     # Further reduced: chans instead of chans*2
                 DEPTHS = [2, 2, 2]           # Single layer per stage for RTX 2080
-                NUM_HEADS = [2, 3, 4]       # Reduced head count
-                WINDOW_SIZE = 6  # Window size 6 for 3-stage compatibility
+                NUM_HEADS = [2, 2, 2]       # Reduced head count
+                WINDOW_SIZE = 8  # Window size 8 works for 768÷8=96 and 480÷8=60
                 MLP_RATIO = 2.0              # Reduced MLP ratio
                 QKV_BIAS = True
                 QK_SCALE = None
@@ -99,7 +99,8 @@ class NormUnet(nn.Module):
                 num_pools=num_pools,
                 drop_prob=drop_prob
             )
-            
+
+            # Remove fixed padded_size - let SwinUnet determine size from first input
             self.unet = SwinUnet(config, img_size=None, num_classes=out_chans)
         else:
             self.unet = Unet(
@@ -144,10 +145,11 @@ class NormUnet(nn.Module):
         _, _, h, w = x.shape
         
         if self.is_transformer:
-            # For SwinUNet with window_size=6 and 3 stages: perfect divisibility
-            # FastMRI 768×400 → 768×480 → 192×120 → 96×60 → 48×30 (all ÷6 ✅)
-            h_mult = 768  # 768÷6=128, stages: 192→96→48 (all ÷6)
-            w_mult = 480  # 480÷6=80, stages: 120→60→30 (all ÷6)
+            # For SwinUNet, pad all images to the same consistent size
+            # Use 768x512 as target size for FastMRI dataset
+            target_h, target_w = 768, 512
+            h_mult = max(target_h, ((h - 1) | 127) + 1)  # At least target_h, rounded up to multiple of 128
+            w_mult = max(target_w, ((w - 1) | 127) + 1)  # At least target_w, rounded up to multiple of 128
         else:
             # Original UNet padding (multiple of 16)
             w_mult = ((w - 1) | 15) + 1
@@ -171,13 +173,17 @@ class NormUnet(nn.Module):
         return x[..., h_pad[0] : h_mult - h_pad[1], w_pad[0] : w_mult - w_pad[1]]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # print(f"=== NormUnet INPUT shape: {x.shape}")
         if not x.shape[-1] == 2:
             raise ValueError("Last dimension must be 2 for complex.")
 
         # get shapes for unet and normalize
         x = self.complex_to_chan_dim(x)
+        # print(f"=== After complex_to_chan_dim: {x.shape}")
         x, mean, std = self.norm(x)
+        # print(f"=== After norm: {x.shape}")
         x, pad_sizes = self.pad(x)
+        # print(f"=== After pad (REAL INPUT TO SWIN): {x.shape}")
 
         # Forward through the network (UNet or SwinUNet)
         x = self.unet(x)
@@ -304,13 +310,20 @@ class VarNet(nn.Module):
         )
 
     def forward(self, masked_kspace: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        # print(f"=== VarNet INPUT - masked_kspace shape: {masked_kspace.shape}")
+        # print(f"=== VarNet INPUT - mask shape: {mask.shape}")
+        
         sens_maps = self.sens_net(masked_kspace, mask)
+        # print(f"=== After sens_net - sens_maps shape: {sens_maps.shape}")
+        
         kspace_pred = masked_kspace.clone()
 
         for cascade in self.cascades:
             kspace_pred = cascade(kspace_pred, masked_kspace, mask, sens_maps)
         result = fastmri.rss(fastmri.complex_abs(fastmri.ifft2c(kspace_pred)), dim=1)
+        # print(f"=== Before center_crop - result shape: {result.shape}")
         result = center_crop(result, 384, 384)
+        # print(f"=== After center_crop - result shape: {result.shape}")
         return result
 
 

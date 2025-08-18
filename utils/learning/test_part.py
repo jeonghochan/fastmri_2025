@@ -33,7 +33,8 @@ def forward(args):
     print ('Current cuda device ', torch.cuda.current_device())
 
     # Load checkpoint first to get training configuration
-    checkpoint = torch.load(args.exp_dir / 'best_model.pt', map_location='cpu', weights_only=False)
+    checkpoint_file = args.checkpoint if hasattr(args, 'checkpoint') and args.checkpoint else 'best_model.pt'
+    checkpoint = torch.load(args.exp_dir / checkpoint_file, map_location='cpu', weights_only=False)
     print(f"Loaded model from epoch {checkpoint['epoch']}, best val loss: {checkpoint['best_val_loss'].item()}")
     
     # Robust auto-detection: Check actual model keys in checkpoint

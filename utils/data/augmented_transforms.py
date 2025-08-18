@@ -44,7 +44,13 @@ class AugmentedDataTransform(DataTransform):
                 self.augmentor = KSpaceAugmentor(
                     prob_hflip=config.get('prob_hflip', 0.5),
                     prob_vflip=config.get('prob_vflip', 0.5),
-                    prob_shift=config.get('prob_shift', 0.3),
+                    # prob_shift=config.get('prob_shift', 0.3),
+                    #mask function
+                    base_prob_randmask=config.get('base_prob_randmask', 0.5),
+                    base_prob_equimask=config.get('base_prob_equimask', 0.5),
+                    base_prob_magicmask=config.get('base_prob_magicmask', 0.5),
+                    base_prob_uniquemask = config.get('base_prob_uniquemask', 0.5),
+                    
                     max_shift_fraction=config.get('max_shift_fraction', 0.05),
                     seed=config.get('seed', None),
                     # Scheduling parameters

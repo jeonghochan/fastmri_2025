@@ -1,8 +1,12 @@
 import torch
+# Simulate GTX 1080 8GB VRAM on RTX 3090
+# torch.cuda.set_per_process_memory_fraction(0.333, device=0)
 import argparse
 import shutil
 import os, sys
 from pathlib import Path
+
+
 
 if os.getcwd() + '/utils/model/' not in sys.path:
     sys.path.insert(1, os.getcwd() + '/utils/model/')
@@ -37,6 +41,10 @@ def parse():
     # K-space augmentation arguments
     parser.add_argument('--kspace-augment-config', type=str, default=None, 
                        help='Path to k-space augmentation configuration YAML file')
+    
+    # Resume training arguments
+    parser.add_argument('--resume', type=str, default=None,
+                       help='Path to checkpoint file to resume training from')
 
     args = parser.parse_args()
     return args

@@ -263,7 +263,7 @@ import logging
 from math import exp
 
 # k-space masking utilities
-from utils.augment.subsample import RandomMaskFunc, EquispacedMaskFractionFunc, MagicMaskFunc,  UniqueMaskFunc
+from utils.augment.subsample import RandomMaskFunc, EquispacedMaskFractionFunc, MagicMaskFunc, UniqueMaskFunc
 
 logger = logging.getLogger(__name__)
 
@@ -333,7 +333,9 @@ class KSpaceAugmentor:
                                              accelerations=[4,8], allow_any_combination=True)   
         
         #if center_fraction and acceleration이 changes, mask is changed. 
-        self.unique_mask_func = UniqueMaskFunc()
+        self.rand_mask_func = UniqueMaskFunc(center_fractions=[0.04,0.08],
+                                        accelerations=[5,7,9],
+                                        allow_any_combination=True)
 
 
         # Scheduling parameters
@@ -425,7 +427,7 @@ class KSpaceAugmentor:
             #save mask
             self.aug_mask = mask
             transforms_applied.append('randmask')
-            print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
+            # print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
 
         
         if self.rng.rand() < current_prob_equimask:
@@ -438,7 +440,7 @@ class KSpaceAugmentor:
             kspace_complex = kspace_complex * mask
             self.aug_mask = mask
             transforms_applied.append('equimask')
-            print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
+            # print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
 
         if self.rng.rand() < current_prob_magic:
             H, W = kspace_complex.shape[-2:]   # H=768, W=396
@@ -450,7 +452,7 @@ class KSpaceAugmentor:
             kspace_complex = kspace_complex* mask
             self.aug_mask = mask
             transforms_applied.append('magicmask')
-            print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
+            # print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
         
         if self.rng.rand() < current_prob_uniquemask:
             H, W = kspace_complex.shape[-2:]   # H=768, W=396
@@ -462,7 +464,7 @@ class KSpaceAugmentor:
             kspace_complex = kspace_complex* mask
             self.aug_mask = mask
             transforms_applied.append('uniquemask')
-            print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
+            # print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
 
 
 

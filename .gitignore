@@ -6,3 +6,4 @@ classifier/Data/
 classifier/fastmri_ref/
 classifier/result/
 SwinGAN/
+Data/

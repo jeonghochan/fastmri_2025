@@ -3,7 +3,7 @@ python train.py \
   -e 40 \
   -l 0.001 \
   -r 10 \
-  -n 'test_Varnet/swinunet' \
+  -n 'test_Varnet/final/swinunet' \
   -t '/storage/junsoo/train/' \
   -v '/storage/junsoo/val/' \
   --use-transformer \

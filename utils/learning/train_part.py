@@ -85,21 +85,23 @@ def validate(args, model, data_loader):
     return metric_loss, num_subjects, reconstructions, targets, None, time.perf_counter() - start
 
 
-def save_model(args, exp_dir, epoch, model, optimizer, best_val_loss, is_new_best, top3_models):
+def save_model(args, exp_dir, epoch, model, optimizer, best_val_loss, is_new_best, top3_models, val_loss):
     torch.save({
             'epoch': epoch,
+            'val_loss': val_loss,
             'best_val_loss': best_val_loss,
             'args': args,
             'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
             'exp_dir': exp_dir 
         },
+        
         f=exp_dir / 'model.pt')
 
     if is_new_best:
         shutil.copyfile(exp_dir / 'model.pt', exp_dir / 'best_model.pt')
 
-    current_loss = best_val_loss.item() if hasattr(best_val_loss, 'item') else best_val_loss
+    current_loss = val_loss.item() if hasattr(val_loss, 'item') else val_loss
 
     # Add current model to top3_models list
     top3_models.append({
@@ -108,16 +110,16 @@ def save_model(args, exp_dir, epoch, model, optimizer, best_val_loss, is_new_bes
         'model_path': exp_dir / f'model_epoch_{epoch}.pt'
     })
 
-    # Sort by validation loss and keep only top 5
+    # Sort by validation loss and keep only top 3
     top3_models.sort(key=lambda x: x['val_loss'])
 
-    # Remove old models if we have more than 5
-    while len(top3_models) > 5:
+    # Remove old models if we have more than 3
+    while len(top3_models) > 3:
         removed_model = top3_models.pop()
         if removed_model['model_path'].exists():
             removed_model['model_path'].unlink()
 
-    # Only save epoch files for models in top 5
+    # Only save epoch files for models in top 3
     for model_info in top3_models:
         if model_info['epoch'] == epoch and not model_info['model_path'].exists():
             shutil.copyfile(exp_dir / 'model.pt', model_info['model_path'])
@@ -144,9 +146,11 @@ def train(args, kspace_augment_config_path=None):
     loss_type = SSIMLoss().to(device=device)
     optimizer = torch.optim.Adam(model.parameters(), args.lr)
 
-    best_val_loss = 1.
+    best_val_loss = 1.0
     start_epoch = 0
     top3_models = []  # List to track top 3 models
+
+    val_loss_log_path = args.exp_dir / "validation_loss_log.txt"
 
     # Resume training from checkpoint if specified
     if hasattr(args, 'resume') and args.resume:
@@ -156,6 +160,8 @@ def train(args, kspace_augment_config_path=None):
                 # Always assume full checkpoint dict
                 checkpoint = torch.load(args.resume, map_location='cpu', weights_only=False)
                 model.load_state_dict(checkpoint['model'])
+                start_epoch = checkpoint['epoch']
+                best_val_loss = checkpoint['val_loss'] if 'val_loss' in checkpoint else checkpoint['best_val_loss']
 
             except Exception as e:
                 print(f"=> Failed to load checkpoint: {e}")
@@ -175,6 +181,11 @@ def train(args, kspace_augment_config_path=None):
             print("K-space augmentation scheduling enabled")
     
     val_loss_log = np.empty((0, 2))
+
+    if start_epoch == 0:
+        with open(val_loss_log_path, 'w') as f:
+            f.write("Epoch\tValidationLoss\n")
+
     for epoch in range(start_epoch, args.num_epochs):
         print(f'Epoch #{epoch:2d} ............... {args.net_name} ...............')
         
@@ -198,10 +209,14 @@ def train(args, kspace_augment_config_path=None):
 
         val_loss = val_loss / num_subjects
 
+        with open(val_loss_log_path, 'a') as f:
+            f.write(f"{epoch}\t{val_loss:.7f}\n")
+        print(f"Validation loss {val_loss:.4g} saved to {val_loss_log_path}")
+
         is_new_best = val_loss < best_val_loss
         best_val_loss = min(best_val_loss, val_loss)
 
-        top3_models = save_model(args, args.exp_dir, epoch + 1, model, optimizer, best_val_loss, is_new_best, top3_models)
+        top3_models = save_model(args, args.exp_dir, epoch + 1, model, optimizer, best_val_loss, is_new_best, top3_models, val_loss)
         print(
             f'Epoch = [{epoch:4d}/{args.num_epochs:4d}] TrainLoss = {train_loss:.4g} '
             f'ValLoss = {val_loss:.4g} TrainTime = {train_time:.4f}s ValTime = {val_time:.4f}s',

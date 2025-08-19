@@ -7,5 +7,5 @@ python train.py \
   -t '/storage/junsoo/train/' \
   -v '/storage/junsoo/val/' \
   --chans 18 \
-  --kspace-augment-config configs/kspace_augment_2.yaml \
+  --kspace-augment-config configs/kspace_mask_augment_2.yaml \
   --resume /home/junsoo/result/test_Varnet/unet/checkpoints/best_model.pt

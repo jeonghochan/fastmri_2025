@@ -294,8 +294,7 @@ class KSpaceAugmentor:
                  base_prob_randmask: float = 0.5,
                  base_prob_equimask: float = 0.5,
                  base_prob_magicmask: float = 0.5,
-                 base_prob_uniquemask: float = 0.5,
-                 aug_mask = None                 
+                 base_prob_uniquemask: float = 0.5           
                  ):
         """
         Initialize k-space augmentor with scheduling support.
@@ -321,7 +320,6 @@ class KSpaceAugmentor:
         self.base_prob_equimask = base_prob_equimask
         self.base_prob_magic = base_prob_magicmask
         self.base_prob_uniquemask = base_prob_uniquemask
-        self.aug_mask = aug_mask
 
         # Initialize k-space mask functions
         self.rand_mask_func = RandomMaskFunc(center_fractions=[0.04,0.08],
@@ -350,6 +348,7 @@ class KSpaceAugmentor:
         
         # Initialize random number generator
         self.rng = np.random.RandomState(seed)
+        # self.rng_2 = ??
         
         # Update strength for initial epoch
         self._update_strength()
@@ -388,20 +387,6 @@ class KSpaceAugmentor:
         current_prob_equimask = self.base_prob_equimask * self.current_strength
         current_prob_magic = self.base_prob_magic * self.current_strength
         current_prob_uniquemask = self.base_prob_uniquemask * self.current_strength
-
-        # Apply horizontal flip in k-space domain
-        if self.rng.rand() < current_prob_hflip:
-            kspace_complex = self._hflip_kspace(kspace_complex)
-            target_tensor = self._hflip_target(target_tensor)
-            transforms_applied.append('hflip')
-            self.aug_mask = torch.zeros_like(target_tensor)
-            
-        # Apply vertical flip in k-space domain  
-        if self.rng.rand() < current_prob_vflip:
-            kspace_complex = self._vflip_kspace(kspace_complex)
-            target_tensor = self._vflip_target(target_tensor)
-            transforms_applied.append('vflip')
-            self.aug_mask = torch.zeros_like(target_tensor)
             
         # Apply circular shift (plane movement) in k-space domain
         # if self.rng.rand() < current_prob_shift:
@@ -412,7 +397,9 @@ class KSpaceAugmentor:
 
         # Apply new mask augmentation
 
-        if self.rng.rand() < current_prob_randmask:
+        mask_rand = self.rng.rand()
+
+        if mask_rand < current_prob_randmask:
             # Apply new mask augmentation (always applied, no probability)
             # Generate mask from subsample.py
             H, W = clean_kspace_complex.shape[-2:]   # H=768, W=396
@@ -430,14 +417,11 @@ class KSpaceAugmentor:
             # Apply mask augmentation        
             clean_kspace_complex = clean_kspace_complex * mask
             
-            #save mask
-            self.aug_mask = mask
             transforms_applied.append('randmask')
             # print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
             kspace_result = torch.stack([clean_kspace_complex.real, clean_kspace_complex.imag], dim=-1)
 
-        
-        elif self.rng.rand() < current_prob_randmask + current_prob_equimask:
+        elif mask_rand < current_prob_randmask + current_prob_equimask:
             H, W = clean_kspace_complex.shape[-2:]   # H=768, W=396
             mask, _ = self.equispaced_mask_func((1, W, 1), seed=None)  # (1, W, 1)
             mask = mask.to(clean_kspace_complex.device)
@@ -445,12 +429,12 @@ class KSpaceAugmentor:
             mask = mask.transpose(-1, -2).expand(1, H, W)
             # print("after expand:", mask.shape)            # (1, H, W)
             clean_kspace_complex = clean_kspace_complex * mask
-            self.aug_mask = mask
+
             transforms_applied.append('equimask')
             # print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
             kspace_result = torch.stack([clean_kspace_complex.real, clean_kspace_complex.imag], dim=-1)
 
-        elif self.rng.rand() < current_prob_randmask + current_prob_equimask + current_prob_magic:
+        elif mask_rand < current_prob_randmask + current_prob_equimask + current_prob_magic:
             H, W = clean_kspace_complex.shape[-2:]   # H=768, W=396
             mask, _ = self.equispaced_mask_func((1, W, 1), seed=None)  # (1, W, 1)
             mask = mask.to(clean_kspace_complex.device)
@@ -458,12 +442,12 @@ class KSpaceAugmentor:
             mask = mask.transpose(-1, -2).expand(1, H, W)
             # print("after expand:", mask.shape)            # (1, H, W)
             clean_kspace_complex = clean_kspace_complex* mask
-            self.aug_mask = mask
+
             transforms_applied.append('magicmask')
             # print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
             kspace_result = torch.stack([clean_kspace_complex.real, clean_kspace_complex.imag], dim=-1)
 
-        elif self.rng.rand() < current_prob_randmask + current_prob_equimask + current_prob_magic + current_prob_uniquemask:
+        elif mask_rand < current_prob_randmask + current_prob_equimask + current_prob_magic + current_prob_uniquemask:
             H, W = clean_kspace_complex.shape[-2:]   # H=768, W=396
             mask, _ = self.unique_mask_func((1, W, 1), seed=None)  # (1, W, 1)
             mask = mask.to(clean_kspace_complex.device)
@@ -471,22 +455,32 @@ class KSpaceAugmentor:
             mask = mask.transpose(-1, -2).expand(1, H, W)
             # print("after expand:", mask.shape)            # (1, H, W)
             clean_kspace_complex = clean_kspace_complex* mask
-            self.aug_mask = mask
+
             transforms_applied.append('uniquemask')
             # print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
             kspace_result = torch.stack([clean_kspace_complex.real, clean_kspace_complex.imag], dim=-1)
 
         else:
-            kspace_result = torch.stack([kspace_complex.real, kspace_complex.imag], dim=-1)
+            clean_kspace_complex = kspace_complex
 
-        
+        # Apply horizontal flip in k-space domain
+        if self.rng.rand() < current_prob_hflip:
+            clean_kspace_complex = self._hflip_kspace(clean_kspace_complex)
+            target_tensor = self._hflip_target(target_tensor)
+            transforms_applied.append('hflip')
+            
+        # Apply vertical flip in k-space domain  
+        if self.rng.rand() < current_prob_vflip:
+            clean_kspace_complex = self._vflip_kspace(clean_kspace_complex)
+            target_tensor = self._vflip_target(target_tensor)
+            transforms_applied.append('vflip')
+
+        kspace_result = torch.stack([clean_kspace_complex.real, clean_kspace_complex.imag], dim=-1)
+
         # Debug log
         if transforms_applied:
             logger.debug(f"Applied k-space transforms to {fname}, slice {slice_num}: {transforms_applied} "
                         f"(strength={self.current_strength:.3f}, epoch={self.current_epoch})")
-        
-        #if you want to check the verify,
-        # return kspace_result, target_tensor, self.aug_mask
     
         return kspace_result, target_tensor
 

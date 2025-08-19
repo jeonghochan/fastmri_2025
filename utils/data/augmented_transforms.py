@@ -44,13 +44,7 @@ class AugmentedDataTransform(DataTransform):
                 self.augmentor = KSpaceAugmentor(
                     prob_hflip=config.get('prob_hflip', 0.5),
                     prob_vflip=config.get('prob_vflip', 0.5),
-                    # prob_shift=config.get('prob_shift', 0.3),
-                    #mask function
-                    base_prob_randmask=config.get('base_prob_randmask', 0.5),
-                    base_prob_equimask=config.get('base_prob_equimask', 0.5),
-                    base_prob_magicmask=config.get('base_prob_magicmask', 0.5),
-                    base_prob_uniquemask = config.get('base_prob_uniquemask', 0.5),
-                    
+                    prob_shift=config.get('prob_shift', 0.0),
                     max_shift_fraction=config.get('max_shift_fraction', 0.05),
                     seed=config.get('seed', None),
                     # Scheduling parameters
@@ -58,7 +52,12 @@ class AugmentedDataTransform(DataTransform):
                     aug_schedule=config.get('aug_schedule', 'constant'),
                     aug_delay=config.get('aug_delay', 0),
                     max_epochs=config.get('max_epochs', 100),
-                    aug_exp_decay=config.get('aug_exp_decay', 5.0)
+                    aug_exp_decay=config.get('aug_exp_decay', 5.0),
+                    # Mask function
+                    base_prob_randmask=config.get('base_prob_randmask', 0.5),
+                    base_prob_equimask=config.get('base_prob_equimask', 0.5),
+                    base_prob_magicmask=config.get('base_prob_magicmask', 0.5),
+                    base_prob_uniquemask=config.get('base_prob_uniquemask', 0.5),
                 )
                 logger.info(f"K-space augmentation enabled from config: {augment_config_path}")
                 logger.info(f"Augmentation schedule: {config.get('aug_schedule', 'constant')} "

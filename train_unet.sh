@@ -3,7 +3,7 @@ python train.py \
   -e 40 \
   -l 0.001 \
   -r 10 \
-  -n 'test_Varnet/unet' \
+  -n 'test_Varnet/final/unet' \
   -t '/storage/junsoo/train/' \
   -v '/storage/junsoo/val/' \
   --chans 18 \

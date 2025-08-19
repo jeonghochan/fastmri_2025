@@ -1,0 +1,11 @@
+python train.py \
+  -b 1 \
+  -e 40 \
+  -l 0.0001 \
+  -r 10 \
+  -n 'test_Varnet/final/unet_2_cont' \
+  -t '/storage/junsoo/train/' \
+  -v '/storage/junsoo/val/' \
+  --chans 18 \
+  --kspace-augment-config configs/kspace_mask_augment_2_exp.yaml \
+  --resume 너의주소에맞게/fastmri/test_Varnet/unet_2/checkpoints/best_model.pt

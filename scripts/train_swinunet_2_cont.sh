@@ -3,9 +3,9 @@ python train.py \
   -e 40 \
   -l 0.0001 \
   -r 10 \
-  -n 'test_Varnet/final/swinunet_2' \
+  -n 'test_Varnet/final/swinunet_2_cont' \
   -t '/storage/junsoo/train/' \
   -v '/storage/junsoo/val/' \
   --use-transformer \
   --kspace-augment-config configs/kspace_mask_augment_2_exp.yaml \
-  --resume /home/junsoo/result/test_Varnet/final/swinunet/checkpoints/best_model.pt
+  --resume 너의주소에맞게/fastmri/test_Varnet/swinunet/checkpoints/best_model.pt

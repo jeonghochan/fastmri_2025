@@ -3,9 +3,9 @@ python train.py \
   -e 40 \
   -l 0.0001 \
   -r 10 \
-  -n 'test_Varnet/unet_2' \
+  -n 'test_Varnet/final/unet_2' \
   -t '/storage/junsoo/train/' \
   -v '/storage/junsoo/val/' \
   --chans 18 \
-  --kspace-augment-config configs/kspace_mask_augment_2.yaml \
-  --resume /home/junsoo/result/test_Varnet/unet/checkpoints/best_model.pt
+  --kspace-augment-config configs/kspace_mask_augment_2_exp.yaml \
+  --resume /home/junsoo/result/test_Varnet/final/unet/checkpoints/best_model.pt

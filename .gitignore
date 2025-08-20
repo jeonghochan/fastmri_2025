@@ -2,6 +2,6 @@
 venv_*
 env
 __pycache__
-classifier
+classifier/
 SwinGAN/
 Data/

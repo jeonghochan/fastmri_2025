@@ -2,6 +2,4 @@
 venv_*
 env
 __pycache__
-classifier/
-SwinGAN/
 Data/

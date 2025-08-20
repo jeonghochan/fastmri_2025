@@ -63,10 +63,10 @@ if __name__ == '__main__':
     else:
         print("K-space augmentation disabled")
 
-    args.exp_dir = '../result' / args.net_name / 'checkpoints'
-    args.val_dir = '../result' / args.net_name / 'reconstructions_val'
-    args.main_dir = '../result' / args.net_name / __file__
-    args.val_loss_dir = '../result' / args.net_name
+    args.exp_dir = 'result' / args.net_name / 'checkpoints'
+    args.val_dir = 'result' / args.net_name / 'reconstructions_val'
+    args.main_dir = 'result' / args.net_name / __file__
+    args.val_loss_dir = 'result' / args.net_name
 
     args.exp_dir.mkdir(parents=True, exist_ok=True)
     args.val_dir.mkdir(parents=True, exist_ok=True)

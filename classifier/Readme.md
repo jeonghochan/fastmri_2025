@@ -1,0 +1,57 @@
+# FastMRI K‑Space Classifier (v5)
+
+A lightweight PyTorch pipeline for **binary classification (Brain vs Knee)** directly in *k‑space* using a small residual CNN and aggressive  data augmentation.
+
+
+## Newest version 
+```
+classify_data_aug_v5.py
+```
+
+
+## 📦 Requirements
+```
+conda env create -n fastmri -f environment.yml
+```
+
+## 🗂️ Dataset layout
+
+
+```
+/Data/
+    ├── train
+        ├── kspace
+            ├── brain_acc4_1.h5
+            ├── brain_acc4_2.h5
+                ...
+        └── image
+            ├── brain_acc4_1.h5
+            ├── brain_acc4_2.h5
+                ...
+    ├── val
+        ├── kspace
+        └── images
+            ...
+    └── leaderboard
+        ├── acc4
+            ├── kspace
+            ├── images
+                ...
+        └── acc8
+            ...
+```
+
+## 🚀 Quick start
+
+```bash
+# 1. train + val (80/20 split) and save the best model
+python classify_data_aug_v5.py \
+    --data /Data/train/kspace \
+    --test-data /Data/val/kspace
+```
+
+## 📜 License
+
+© 2025 Jeong Hochan  
+This project is licensed under the **MIT License**.  
+See the [LICENSE](LICENSE) file for the full text.

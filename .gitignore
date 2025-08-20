@@ -2,8 +2,6 @@
 venv_*
 env
 __pycache__
-classifier/Data/
-classifier/fastmri_ref/
-classifier/result/
+classifier
 SwinGAN/
 Data/

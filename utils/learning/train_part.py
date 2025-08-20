@@ -162,6 +162,7 @@ def train(args, kspace_augment_config_path=None):
                 model.load_state_dict(checkpoint['model'])
                 start_epoch = checkpoint['epoch']
                 best_val_loss = checkpoint['val_loss'] if 'val_loss' in checkpoint else checkpoint['best_val_loss']
+                optimizer.load_state_dict(checkpoint['optimizer'])
 
             except Exception as e:
                 print(f"=> Failed to load checkpoint: {e}")

@@ -12,6 +12,8 @@ from utils.common.utils import save_reconstructions, ssim_loss
 from utils.common.loss_function import SSIMLoss
 from utils.model.varnet import VarNet
 
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+
 import os
 
 def train_epoch(args, epoch, model, data_loader, optimizer, loss_type):
@@ -152,6 +154,7 @@ def train(args, kspace_augment_config_path=None):
 
     val_loss_log_path = args.exp_dir / "validation_loss_log.txt"
 
+    
     # Resume training from checkpoint if specified
     if hasattr(args, 'resume') and args.resume:
         if os.path.isfile(args.resume):
@@ -169,6 +172,8 @@ def train(args, kspace_augment_config_path=None):
                 print("=> Starting training from scratch")
         else:
             print(f"=> No checkpoint found at '{args.resume}'")
+
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5, verbose=True)
 
 
     # Create data loaders with k-space augmentation support
@@ -209,6 +214,8 @@ def train(args, kspace_augment_config_path=None):
         num_subjects = torch.tensor(num_subjects).cuda(non_blocking=True)
 
         val_loss = val_loss / num_subjects
+
+        scheduler.step(val_loss)
 
         with open(val_loss_log_path, 'a') as f:
             f.write(f"{epoch}\t{val_loss:.7f}\n")

@@ -4,14 +4,12 @@
 ## 1. 폴더 계층
 
 ### 폴더의 전체 구조
-![image](docs/fastmri_folder_structure.png)
-* `FastMRI_challenge`, `Data`, `result` 폴더가 위의 구조대로 설정되어 있어야 default argument를 활용할 수 있습니다.
+* `FastMRI_challenge`, `Data`, `result` 폴더가 아래의 구조대로 설정되어 있어야 default argument를 활용할 수 있습니다.
 * 본 github repository는 `FastMRI_challenge` 폴더입니다.
 * `Data` 폴더는 MRI data 파일을 담고 있으며 아래에 상세 구조를 첨부하겠습니다.
 * `result` 폴더는 학습한 모델의 weights을 기록하고 validation, leaderboard dataset의 reconstruction image를 저장하는데 활용되며, 아래에 상세 구조를 첨부하겠습니다.
 
 ### Data 폴더의 구조
-![image](docs/fastmri_data_structure.png)
 * train, val:
     * train, val 폴더는 각각 모델을 학습(train), 검증(validation)하는데 사용하며 각각 image, kspace 폴더로 나뉩니다.
     * 참가자들은 generalization과 representation의 trade-off를 고려하여 train, validation의 set을 자유로이 나눌 수 있습니다.
@@ -25,6 +23,24 @@
    * acc4과 acc8 폴더는 각각 image, kspace 폴더로 나뉩니다.
    * image와 kspace 폴더에 들어있는 파일의 형식은 다음과 같습니다: {brain 또는 knee}\_{mask 형식}\_{순번}.h5
    * {순번}은 1 ~ 29 사이의 숫자입니다. 
+```bash
+└── Data
+   ├── train
+         ├── image
+            ├── brain_acc4_1.h5
+            └── knee_acc4_1.h5
+                     ⁞   
+         ├── kspace
+            ├── brain_acc4_1.h5
+            └── knee_acc4_1.h5
+                     ⁞
+   ├── val
+       ├── image
+       └── kspace
+   └── leaderboard
+       ├── image
+       └── kspace
+```
 
 ### result 폴더의 구조
 * result 폴더는 모델의 이름에 따라서 여러 폴더로 나뉠 수 있습니다.
